@@ -1,33 +1,30 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { useState } from 'react'
 import FighterCreator from './FighterCreator'
 
 function Dashboard({ session }) {
   const [profile, setProfile] = useState(null)
   const [fighters, setFighters] = useState([])
   const [loading, setLoading] = useState(true)
+  const [showCreator, setShowCreator] = useState(false)
 
   useEffect(() => {
     fetchProfile()
     fetchFighters()
   }, [])
 
- const fetchProfile = async () => {
-    const { data, error } = await supabase
+  const fetchProfile = async () => {
+    const { data } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', session.user.id)
       .single()
 
-    console.log('Profile data:', data)
-    console.log('Profile error:', error)
-
     if (data) setProfile(data)
   }
 
   const fetchFighters = async () => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('fighters')
       .select('*')
       .eq('owner_id', session.user.id)
@@ -42,10 +39,16 @@ function Dashboard({ session }) {
 
   if (loading) return <p>Loading...</p>
 
+  if (showCreator) return (
+    <FighterCreator
+      session={session}
+      onBack={() => { setShowCreator(false); fetchFighters(); fetchProfile(); }}
+    />
+  )
+
   return (
     <div>
       <button onClick={handleSignOut}>Sign Out</button>
-
       <h1>UMA Dashboard</h1>
 
       {profile && (
@@ -57,6 +60,7 @@ function Dashboard({ session }) {
       )}
 
       <h2>🥊 Your Fighters</h2>
+      <button onClick={() => setShowCreator(true)}>+ Create Fighter</button>
       {fighters.length === 0 ? (
         <p>No fighters yet — create or buy one to get started!</p>
       ) : (

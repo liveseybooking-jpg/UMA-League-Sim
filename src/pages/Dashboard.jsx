@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { useState } from 'react'
+import FighterCreator from './FighterCreator'
 
 function Dashboard({ session }) {
   const [profile, setProfile] = useState(null)

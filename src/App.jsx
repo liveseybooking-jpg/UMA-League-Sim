@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import AuthForm from './components/auth/AuthForm'
+import Dashboard from './pages/Dashboard'
 
 function App() {
   const [session, setSession] = useState(null)
@@ -17,7 +18,7 @@ function App() {
   return (
     <div>
       {session ? (
-        <h1>Welcome to UMA, {session.user.email}</h1>
+        <Dashboard session={session} />
       ) : (
         <AuthForm />
       )}

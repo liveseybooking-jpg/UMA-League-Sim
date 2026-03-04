@@ -1,21 +1,28 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-const WEIGHT_CLASSES = [
-  'Atomweight', 'Strawweight', 'Flyweight', 'Bantamweight',
-  'Featherweight', 'Lightweight', 'Welterweight', 'Middleweight',
-  'Light Heavyweight', 'Heavyweight'
+const MEN_CLASSES = [
+  'Heavyweight', 'Light Heavyweight', 'Middleweight', 'Welterweight',
+  'Lightweight', 'Featherweight', 'Bantamweight', 'Flyweight',
+  'Strawweight', 'Atomweight'
+]
+
+const WOMEN_CLASSES = [
+  'Featherweight', 'Bantamweight', 'Flyweight', 'Strawweight', 'Atomweight'
 ]
 
 const STYLES = ['Striker', 'Wrestler', 'BJJ', 'Muay Thai', 'Boxer', 'Kickboxer', 'Grappler', 'All-Rounder']
 
 const STAT_BUDGET = 250
 const BASE_COST = 10000
+const POTENTIAL_COSTS = { low: 0, medium: 2000, high: 5000, elite: 10000 }
 
 function FighterCreator({ session, onBack }) {
   const [name, setName] = useState('')
-  const [weightClass, setWeightClass] = useState(WEIGHT_CLASSES[0])
+  const [gender, setGender] = useState('men')
+  const [weightClass, setWeightClass] = useState(MEN_CLASSES[0])
   const [style, setStyle] = useState(STYLES[0])
+  const [potential, setPotential] = useState('low')
   const [stats, setStats] = useState({
     striking: 50,
     grappling: 50,
@@ -25,9 +32,15 @@ function FighterCreator({ session, onBack }) {
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
 
+  const classes = gender === 'men' ? MEN_CLASSES : WOMEN_CLASSES
   const totalSpent = Object.values(stats).reduce((a, b) => a + b, 0)
   const remaining = STAT_BUDGET - totalSpent
-  const fighterCost = BASE_COST
+  const fighterCost = BASE_COST + POTENTIAL_COSTS[potential]
+
+  const handleGender = (g) => {
+    setGender(g)
+    setWeightClass(g === 'men' ? MEN_CLASSES[0] : WOMEN_CLASSES[0])
+  }
 
   const handleStat = (stat, value) => {
     const newVal = parseInt(value)
@@ -44,7 +57,6 @@ function FighterCreator({ session, onBack }) {
     setSaving(true)
     setError(null)
 
-    // Check RB balance
     const { data: profile } = await supabase
       .from('profiles')
       .select('rebirth_points')
@@ -52,12 +64,11 @@ function FighterCreator({ session, onBack }) {
       .single()
 
     if (profile.rebirth_points < fighterCost) {
-      setError('Not enough RBs!')
+      setError(`Not enough RBs! Need ${fighterCost}, have ${profile.rebirth_points}`)
       setSaving(false)
       return
     }
 
-    // Create fighter
     const { error: fighterError } = await supabase
       .from('fighters')
       .insert({
@@ -70,7 +81,9 @@ function FighterCreator({ session, onBack }) {
         cardio: stats.cardio,
         chin: stats.chin,
         cost: fighterCost,
-        value: fighterCost
+        value: fighterCost,
+        potential,
+        gender
       })
 
     if (fighterError) {
@@ -79,7 +92,6 @@ function FighterCreator({ session, onBack }) {
       return
     }
 
-    // Deduct RBs
     await supabase
       .from('profiles')
       .update({ rebirth_points: profile.rebirth_points - fighterCost })
@@ -93,10 +105,15 @@ function FighterCreator({ session, onBack }) {
     <div>
       <button onClick={onBack}>← Back</button>
       <h1>Create Fighter</h1>
-      <p>Cost: {fighterCost} RBs</p>
 
       <div>
-        <label>Name</label>
+        <label>Division</label><br />
+        <button onClick={() => handleGender('men')} style={{ fontWeight: gender === 'men' ? 'bold' : 'normal' }}>Men's</button>
+        <button onClick={() => handleGender('women')} style={{ fontWeight: gender === 'women' ? 'bold' : 'normal' }}>Women's</button>
+      </div>
+
+      <div>
+        <label>Name</label><br />
         <input
           type="text"
           value={name}
@@ -106,23 +123,36 @@ function FighterCreator({ session, onBack }) {
       </div>
 
       <div>
-        <label>Weight Class</label>
+        <label>Weight Class</label><br />
         <select value={weightClass} onChange={e => setWeightClass(e.target.value)}>
-          {WEIGHT_CLASSES.map(wc => <option key={wc}>{wc}</option>)}
+          {classes.map(wc => <option key={wc}>{wc}</option>)}
         </select>
       </div>
 
       <div>
-        <label>Style</label>
+        <label>Style</label><br />
         <select value={style} onChange={e => setStyle(e.target.value)}>
           {STYLES.map(s => <option key={s}>{s}</option>)}
         </select>
       </div>
 
+      <div>
+        <label>Potential</label><br />
+        {Object.entries(POTENTIAL_COSTS).map(([p, cost]) => (
+          <button
+            key={p}
+            onClick={() => setPotential(p)}
+            style={{ fontWeight: potential === p ? 'bold' : 'normal' }}
+          >
+            {p.charAt(0).toUpperCase() + p.slice(1)} {cost > 0 ? `(+${cost} RBs)` : '(free)'}
+          </button>
+        ))}
+      </div>
+
       <h3>Stats — Points remaining: {remaining}</h3>
       {Object.entries(stats).map(([stat, val]) => (
         <div key={stat}>
-          <label>{stat.charAt(0).toUpperCase() + stat.slice(1)}: {val}</label>
+          <label>{stat.charAt(0).toUpperCase() + stat.slice(1)}: {val}</label><br />
           <input
             type="range"
             min={10}
@@ -133,6 +163,7 @@ function FighterCreator({ session, onBack }) {
         </div>
       ))}
 
+      <p>Total Cost: <strong>{fighterCost} RBs</strong></p>
       {error && <p style={{ color: 'red' }}>{error}</p>}
 
       <button onClick={handleCreate} disabled={saving}>

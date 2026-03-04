@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard'
 
 function App() {
   const [session, setSession] = useState(null)
+  console.log('URL:', import.meta.env.VITE_SUPABASE_URL)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {

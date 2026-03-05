@@ -1,61 +1,93 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import WeightClassSelector, { MEN_CLASSES, WOMEN_CLASSES } from '../components/fighter/WeightClassSelector'
+import PhysicalSliders, { getReachCost } from '../components/fighter/PhysicalSliders'
+import StatSliders from '../components/fighter/StatSliders'
+import PotentialSelector, { POTENTIAL_COSTS } from '../components/fighter/PotentialSelector'
 
-const MEN_CLASSES = [
-  'Heavyweight', 'Light Heavyweight', 'Middleweight', 'Welterweight',
-  'Lightweight', 'Featherweight', 'Bantamweight', 'Flyweight',
-  'Strawweight', 'Atomweight'
-]
-
-const WOMEN_CLASSES = [
-  'Featherweight', 'Bantamweight', 'Flyweight', 'Strawweight', 'Atomweight'
-]
-
+const REACH_RATIO = 1.0
+const LEG_REACH_RATIO = 0.497
+const BASE_COST = 10000
 const STYLES = ['Striker', 'Wrestler', 'BJJ', 'Muay Thai', 'Boxer', 'Kickboxer', 'Grappler', 'All-Rounder']
 
-const STAT_BUDGET = 250
-const BASE_COST = 10000
-const POTENTIAL_COSTS = { low: 0, medium: 2000, high: 5000, elite: 10000 }
+const getDefaults = (wc) => ({
+  height: wc.avgHeight,
+  reach: Math.round(wc.avgHeight * REACH_RATIO),
+  legReach: Math.round(wc.avgHeight * LEG_REACH_RATIO),
+})
 
-function FighterCreator({ session, onBack }) {
+function FighterCreator({ session, isGuest, guestData, onGuestCreate, onBack }) {
   const [name, setName] = useState('')
   const [gender, setGender] = useState('men')
-  const [weightClass, setWeightClass] = useState(MEN_CLASSES[0])
+  const [weightClassIndex, setWeightClassIndex] = useState(0)
   const [style, setStyle] = useState(STYLES[0])
   const [potential, setPotential] = useState('low')
-  const [stats, setStats] = useState({
-    striking: 50,
-    grappling: 50,
-    cardio: 50,
-    chin: 50
-  })
+  const [stats, setStats] = useState({ striking: 50, wrestling: 50, ground_game: 50, clinch: 50, fight_iq: 50, athleticism: 50 })
+const [statCost, setStatCost] = useState(0)
+  const [physicals, setPhysicals] = useState({ height: 177, reach: 177, legReach: 88 })
+  const [units, setUnits] = useState('imperial')
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
 
   const classes = gender === 'men' ? MEN_CLASSES : WOMEN_CLASSES
-  const totalSpent = Object.values(stats).reduce((a, b) => a + b, 0)
-  const remaining = STAT_BUDGET - totalSpent
-  const fighterCost = BASE_COST + POTENTIAL_COSTS[potential]
+  const currentClass = classes[weightClassIndex]
+  const avgReach = Math.round(currentClass.avgHeight * REACH_RATIO)
+  const avgLegReach = Math.round(currentClass.avgHeight * LEG_REACH_RATIO)
+
+  useEffect(() => {
+    if (!isGuest && session) {
+      supabase.from('profiles').select('unit_system').eq('id', session.user.id).single()
+        .then(({ data }) => { if (data) setUnits(data.unit_system || 'imperial') })
+    }
+  }, [])
+
+  useEffect(() => {
+    const defaults = getDefaults(currentClass)
+    setPhysicals({ height: defaults.height, reach: defaults.reach, legReach: defaults.legReach })
+  }, [weightClassIndex, gender])
+
+  const reachCost = getReachCost(physicals.reach, avgReach, physicals.legReach, avgLegReach)
+  const fighterCost = BASE_COST + POTENTIAL_COSTS[potential] + reachCost + statCost
 
   const handleGender = (g) => {
     setGender(g)
-    setWeightClass(g === 'men' ? MEN_CLASSES[0] : WOMEN_CLASSES[0])
-  }
-
-  const handleStat = (stat, value) => {
-    const newVal = parseInt(value)
-    const otherStats = totalSpent - stats[stat]
-    if (otherStats + newVal <= STAT_BUDGET) {
-      setStats({ ...stats, [stat]: newVal })
-    }
+    setWeightClassIndex(0)
   }
 
   const handleCreate = async () => {
     if (!name) return setError('Give your fighter a name!')
-    if (remaining < 0) return setError('Over stat budget!')
 
     setSaving(true)
     setError(null)
+
+    const fighter = {
+      name,
+      weight_class: currentClass.name,
+      style,
+      striking: stats.striking,
+      grappling: stats.grappling,
+      cardio: stats.cardio,
+      chin: stats.chin,
+      cost: fighterCost,
+      value: fighterCost,
+      potential,
+      gender,
+      height_cm: physicals.height,
+      reach_cm: physicals.reach,
+      leg_reach_cm: physicals.legReach,
+      wins: 0,
+      losses: 0
+    }
+
+    if (isGuest) {
+      if (guestData.rebirth_points < fighterCost) {
+        setError(`Not enough RBs! Need ${fighterCost}, have ${guestData.rebirth_points}`)
+        setSaving(false)
+        return
+      }
+      onGuestCreate(fighter)
+      return
+    }
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -71,20 +103,7 @@ function FighterCreator({ session, onBack }) {
 
     const { error: fighterError } = await supabase
       .from('fighters')
-      .insert({
-        owner_id: session.user.id,
-        name,
-        weight_class: weightClass,
-        style,
-        striking: stats.striking,
-        grappling: stats.grappling,
-        cardio: stats.cardio,
-        chin: stats.chin,
-        cost: fighterCost,
-        value: fighterCost,
-        potential,
-        gender
-      })
+      .insert({ ...fighter, owner_id: session.user.id })
 
     if (fighterError) {
       setError(fighterError.message)
@@ -113,6 +132,12 @@ function FighterCreator({ session, onBack }) {
       </div>
 
       <div>
+        <label>Units</label><br />
+        <button onClick={() => setUnits('imperial')} style={{ fontWeight: units === 'imperial' ? 'bold' : 'normal' }}>🇺🇸 Imperial</button>
+        <button onClick={() => setUnits('metric')} style={{ fontWeight: units === 'metric' ? 'bold' : 'normal' }}>🌍 Metric</button>
+      </div>
+
+      <div>
         <label>Name</label><br />
         <input
           type="text"
@@ -122,12 +147,12 @@ function FighterCreator({ session, onBack }) {
         />
       </div>
 
-      <div>
-        <label>Weight Class</label><br />
-        <select value={weightClass} onChange={e => setWeightClass(e.target.value)}>
-          {classes.map(wc => <option key={wc}>{wc}</option>)}
-        </select>
-      </div>
+      <WeightClassSelector
+        gender={gender}
+        weightClassIndex={weightClassIndex}
+        setWeightClassIndex={setWeightClassIndex}
+        units={units}
+      />
 
       <div>
         <label>Style</label><br />
@@ -136,34 +161,21 @@ function FighterCreator({ session, onBack }) {
         </select>
       </div>
 
-      <div>
-        <label>Potential</label><br />
-        {Object.entries(POTENTIAL_COSTS).map(([p, cost]) => (
-          <button
-            key={p}
-            onClick={() => setPotential(p)}
-            style={{ fontWeight: potential === p ? 'bold' : 'normal' }}
-          >
-            {p.charAt(0).toUpperCase() + p.slice(1)} {cost > 0 ? `(+${cost} RBs)` : '(free)'}
-          </button>
-        ))}
-      </div>
+      <PotentialSelector potential={potential} setPotential={setPotential} />
 
-      <h3>Stats — Points remaining: {remaining}</h3>
-      {Object.entries(stats).map(([stat, val]) => (
-        <div key={stat}>
-          <label>{stat.charAt(0).toUpperCase() + stat.slice(1)}: {val}</label><br />
-          <input
-            type="range"
-            min={10}
-            max={100}
-            value={val}
-            onChange={e => handleStat(stat, e.target.value)}
-          />
-        </div>
-      ))}
+      <PhysicalSliders
+        physicals={physicals}
+        setPhysicals={setPhysicals}
+        currentClass={currentClass}
+        avgReach={avgReach}
+        avgLegReach={avgLegReach}
+        units={units}
+      />
+
+      <StatSliders stats={stats} setStats={setStats} />
 
       <p>Total Cost: <strong>{fighterCost} RBs</strong></p>
+      {reachCost > 0 && <p style={{ color: 'orange' }}>Reach/Leg Reach premium: +{reachCost} RBs</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
 
       <button onClick={handleCreate} disabled={saving}>

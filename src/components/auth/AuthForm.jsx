@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 
-function AuthForm() {
+function AuthForm({ onGuest }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLogin, setIsLogin] = useState(true)
@@ -33,20 +33,20 @@ function AuthForm() {
         value={email}
         onChange={(e) => setEmail(e.target.value)}
       />
-      <br/>
+      <br />
       <input
         type="password"
         placeholder="Password"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
       />
-      <br/>
+      <br />
       <button onClick={handleSubmit}>
         {isLogin ? 'Login' : 'Sign Up'}
       </button>
 
-      {error && <p style={{color: 'red'}}>{error}</p>}
-      {message && <p style={{color: 'green'}}>{message}</p>}
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+      {message && <p style={{ color: 'green' }}>{message}</p>}
 
       <p>
         {isLogin ? "Don't have an account?" : "Already have an account?"}
@@ -54,6 +54,10 @@ function AuthForm() {
           {isLogin ? 'Sign Up' : 'Login'}
         </button>
       </p>
+
+      <hr />
+      <button onClick={onGuest}>🎮 Play as Guest</button>
+      <p style={{ fontSize: '12px' }}>No account needed — but progress won't be saved!</p>
     </div>
   )
 }

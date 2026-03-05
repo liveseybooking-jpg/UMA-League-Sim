@@ -1,39 +1,41 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import FighterCreator from './FighterCreator'
+import Roster from './Roster'
+import Card from './Card'
+import { generateLeague } from '../lib/leagueGenerator'
 
-function Dashboard({ session, isGuest, guestData, setGuestData, onSignup }) {
+function Dashboard({ session, isGuest, guestProfile, onSignup }) {
   const [profile, setProfile] = useState(null)
   const [fighters, setFighters] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreator, setShowCreator] = useState(false)
+  const [showRoster, setShowRoster] = useState(false)
+  const [showCard, setShowCard] = useState(false)
   const [showTransferPrompt, setShowTransferPrompt] = useState(false)
 
   useEffect(() => {
-    if (isGuest) {
-      setProfile(guestData)
-      setFighters(guestData.fighters || [])
-      setLoading(false)
-    } else {
-      fetchProfile()
-      fetchFighters()
-    }
+    fetchProfile()
+    fetchFighters()
   }, [])
 
   const fetchProfile = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', session.user.id)
       .single()
+    console.log('Profile:', data, 'Error:', error)
     if (data) setProfile(data)
   }
 
   const fetchFighters = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('fighters')
       .select('*')
       .eq('owner_id', session.user.id)
+      .eq('is_ai', false)
+    console.log('Fighters:', data, 'Error:', error)
     if (data) setFighters(data)
     setLoading(false)
   }
@@ -42,15 +44,12 @@ function Dashboard({ session, isGuest, guestData, setGuestData, onSignup }) {
     await supabase.auth.signOut()
   }
 
-  const handleGuestFighterCreate = (fighter) => {
-    const newFighters = [...fighters, fighter]
-    setFighters(newFighters)
-    setGuestData({
-      ...guestData,
-      fighters: newFighters,
-      rebirth_points: guestData.rebirth_points - fighter.cost
-    })
-    setShowCreator(false)
+  const handleGenerateLeague = async () => {
+    console.log('Generating league...')
+    await generateLeague(session.user.id)
+    console.log('Done!')
+    const viewNow = window.confirm('✅ League Created! View now?')
+    if (viewNow) setShowRoster(true)
   }
 
   if (loading) return <p>Loading...</p>
@@ -59,20 +58,29 @@ function Dashboard({ session, isGuest, guestData, setGuestData, onSignup }) {
     <FighterCreator
       session={session}
       isGuest={isGuest}
-      guestData={guestData}
-      onGuestCreate={handleGuestFighterCreate}
       onBack={() => {
         setShowCreator(false)
-        if (!isGuest) { fetchFighters(); fetchProfile() }
+        fetchFighters()
+        fetchProfile()
       }}
     />
+  )
+
+  if (showRoster) return (
+    <Roster session={session} onBack={() => setShowRoster(false)} />
+  )
+
+  if (showCard) return (
+    <Card session={session} onBack={() => setShowCard(false)} />
   )
 
   return (
     <div>
       {isGuest && (
         <div style={{ background: 'orange', padding: '10px' }}>
-          Playing as Guest — progress will be lost when you close the tab!
+          ⚠️ Guest Mode — data deletes when you close the browser!
+          Your code: <strong style={{ letterSpacing: '2px' }}>{guestProfile?.guest_code}</strong>
+          <button onClick={() => navigator.clipboard.writeText(guestProfile?.guest_code)}>📋 Copy</button>
           <button onClick={() => setShowTransferPrompt(true)}>Sign Up to Save</button>
         </div>
       )}
@@ -83,7 +91,7 @@ function Dashboard({ session, isGuest, guestData, setGuestData, onSignup }) {
 
       {showTransferPrompt && (
         <div style={{ background: '#eee', padding: '20px' }}>
-          <h3>You have guest progress!</h3>
+          <h3>Save your progress!</h3>
           <p>Would you like to transfer your fighters and RBs to your new account?</p>
           <button onClick={() => onSignup(true)}>Yes, transfer progress</button>
           <button onClick={() => onSignup(false)}>No, start fresh</button>
@@ -94,14 +102,20 @@ function Dashboard({ session, isGuest, guestData, setGuestData, onSignup }) {
 
       {profile && (
         <div>
-          <h2>👋 {isGuest ? 'Guest' : (profile.username || session.user.email)}</h2>
-          <p>💰 RB Balance: {isGuest ? guestData.rebirth_points : profile.rebirth_points}</p>
+          <h2>👋 {isGuest ? guestProfile?.guest_code : (profile.username || session.user.email)}</h2>
+          <p>💰 RB Balance: {profile.rebirth_points} RBs</p>
           <p>📈 Lifetime Earnings: {profile.lifetime_earnings || 0}</p>
         </div>
       )}
 
+      <div>
+        <button onClick={() => setShowCreator(true)}>+ Create Fighter</button>
+        <button onClick={() => setShowRoster(true)}>📋 View League</button>
+        <button onClick={() => setShowCard(true)}>🥊 Fight Card</button>
+        <button onClick={handleGenerateLeague}>🌍 Generate League</button>
+      </div>
+
       <h2>🥊 Your Fighters</h2>
-      <button onClick={() => setShowCreator(true)}>+ Create Fighter</button>
       {fighters.length === 0 ? (
         <p>No fighters yet — create or buy one to get started!</p>
       ) : (
@@ -112,7 +126,7 @@ function Dashboard({ session, isGuest, guestData, setGuestData, onSignup }) {
             <p>Weight Class: {f.weight_class}</p>
             <p>Potential: {f.potential}</p>
             <p>Division: {f.gender === 'women' ? "Women's" : "Men's"}</p>
-            <p>Value: {f.value} RBs</p>
+            <p>OVR: {f.overall} | Value: {f.value} RBs</p>
           </div>
         ))
       )}

@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import WeightClassSelector, { MEN_CLASSES, WOMEN_CLASSES } from '../components/fighter/WeightClassSelector'
-import PhysicalSliders, { getReachCost } from '../components/fighter/PhysicalSliders'
-import StatSliders from '../components/fighter/StatSliders'
+import PhysicalSliders, { getPhysicalCost } from '../components/fighter/PhysicalSliders'
+import StatSliders, { totalStatCost } from '../components/fighter/StatSliders'
 import PotentialSelector, { POTENTIAL_COSTS } from '../components/fighter/PotentialSelector'
 
 const REACH_RATIO = 1.0
 const LEG_REACH_RATIO = 0.497
-const BASE_COST = 10000
-const STYLES = ['Striker', 'Wrestler', 'BJJ', 'Muay Thai', 'Boxer', 'Kickboxer', 'Grappler', 'All-Rounder']
+const BASE_COST = 5000
 
 const getDefaults = (wc) => ({
   height: wc.avgHeight,
@@ -20,10 +19,9 @@ function FighterCreator({ session, isGuest, guestData, onGuestCreate, onBack }) 
   const [name, setName] = useState('')
   const [gender, setGender] = useState('men')
   const [weightClassIndex, setWeightClassIndex] = useState(0)
-  const [style, setStyle] = useState(STYLES[0])
   const [potential, setPotential] = useState('low')
-  const [stats, setStats] = useState({ striking: 50, wrestling: 50, ground_game: 50, clinch: 50, fight_iq: 50, athleticism: 50 })
-const [statCost, setStatCost] = useState(0)
+ const [stats, setStats] = useState({ striking: 50, grappling: 50, clinch: 50, fight_iq: 50, athleticism: 50 })
+  const [statCost, setStatCost] = useState(0)
   const [physicals, setPhysicals] = useState({ height: 177, reach: 177, legReach: 88 })
   const [units, setUnits] = useState('imperial')
   const [error, setError] = useState(null)
@@ -46,12 +44,21 @@ const [statCost, setStatCost] = useState(0)
     setPhysicals({ height: defaults.height, reach: defaults.reach, legReach: defaults.legReach })
   }, [weightClassIndex, gender])
 
-  const reachCost = getReachCost(physicals.reach, avgReach, physicals.legReach, avgLegReach)
-  const fighterCost = BASE_COST + POTENTIAL_COSTS[potential] + reachCost + statCost
+  const physicalCost = getPhysicalCost(
+    physicals.height, currentClass.avgHeight,
+    physicals.reach, avgReach,
+    physicals.legReach, avgLegReach
+  )
+
+  const fighterCost = Math.max(1000, BASE_COST + POTENTIAL_COSTS[potential] + physicalCost + statCost)
 
   const handleGender = (g) => {
     setGender(g)
     setWeightClassIndex(0)
+  }
+
+  const handleStatCostChange = (newCost) => {
+    setStatCost(newCost)
   }
 
   const handleCreate = async () => {
@@ -63,11 +70,13 @@ const [statCost, setStatCost] = useState(0)
     const fighter = {
       name,
       weight_class: currentClass.name,
-      style,
+      style: 'None',
       striking: stats.striking,
-      grappling: stats.grappling,
-      cardio: stats.cardio,
-      chin: stats.chin,
+      wrestling: stats.wrestling,
+      ground_game: stats.ground_game,
+      clinch: stats.clinch,
+      fight_iq: stats.fight_iq,
+      athleticism: stats.athleticism,
       cost: fighterCost,
       value: fighterCost,
       potential,
@@ -76,7 +85,8 @@ const [statCost, setStatCost] = useState(0)
       reach_cm: physicals.reach,
       leg_reach_cm: physicals.legReach,
       wins: 0,
-      losses: 0
+      losses: 0,
+      is_ai: false
     }
 
     if (isGuest) {
@@ -154,13 +164,6 @@ const [statCost, setStatCost] = useState(0)
         units={units}
       />
 
-      <div>
-        <label>Style</label><br />
-        <select value={style} onChange={e => setStyle(e.target.value)}>
-          {STYLES.map(s => <option key={s}>{s}</option>)}
-        </select>
-      </div>
-
       <PotentialSelector potential={potential} setPotential={setPotential} />
 
       <PhysicalSliders
@@ -172,14 +175,27 @@ const [statCost, setStatCost] = useState(0)
         units={units}
       />
 
-      <StatSliders stats={stats} setStats={setStats} />
+      <StatSliders
+        stats={stats}
+        setStats={setStats}
+        onCostChange={handleStatCostChange}
+      />
 
       <p>Total Cost: <strong>{fighterCost} RBs</strong></p>
-      {reachCost > 0 && <p style={{ color: 'orange' }}>Reach/Leg Reach premium: +{reachCost} RBs</p>}
+      {physicalCost !== 0 && (
+        <p style={{ color: physicalCost > 0 ? 'orange' : 'green' }}>
+          Physical premium: {physicalCost > 0 ? '+' : ''}{physicalCost} RBs
+        </p>
+      )}
+      {statCost !== 0 && (
+        <p style={{ color: statCost > 0 ? 'orange' : 'green' }}>
+          Stat cost: {statCost > 0 ? '+' : ''}{statCost} RBs
+        </p>
+      )}
       {error && <p style={{ color: 'red' }}>{error}</p>}
 
       <button onClick={handleCreate} disabled={saving}>
-        {saving ? 'Creating...' : `Create Fighter (-${fighterCost} RBs)`}
+        {saving ? 'Creating...' : `Create Fighter (${fighterCost > 0 ? `-${fighterCost}` : `+${Math.abs(fighterCost)}`} RBs)`}
       </button>
     </div>
   )

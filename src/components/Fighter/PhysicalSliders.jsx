@@ -1,4 +1,5 @@
-const REACH_COST_PER_CM = 200
+const REACH_COST_PER_CM = 150
+const HEIGHT_COST_PER_CM = 100
 
 export const cmToFeetInches = (cm) => {
   const totalInches = cm / 2.54
@@ -16,11 +17,14 @@ export const displayReach = (cm, units) =>
 export const getDeviance = (value, avg) =>
   (((value - avg) / avg) * 100).toFixed(1)
 
-export const getReachCost = (reach, avgReach, legReach, avgLegReach) => {
-  const reachDiff = Math.max(0, reach - avgReach)
-  const legDiff = Math.max(0, legReach - avgLegReach)
-  return (reachDiff + legDiff) * REACH_COST_PER_CM
+export const getPhysicalCost = (height, avgHeight, reach, avgReach, legReach, avgLegReach) => {
+  const heightCost = (height - avgHeight) * HEIGHT_COST_PER_CM
+  const reachCost = (reach - avgReach) * REACH_COST_PER_CM
+  const legCost = (legReach - avgLegReach) * REACH_COST_PER_CM
+  return heightCost + reachCost + legCost
 }
+
+export const getReachCost = getPhysicalCost
 
 function PhysicalSliders({ physicals, setPhysicals, currentClass, avgReach, avgLegReach, units }) {
   const handlePhysical = (key, value) => {
@@ -30,8 +34,16 @@ function PhysicalSliders({ physicals, setPhysicals, currentClass, avgReach, avgL
   const heightDev = getDeviance(physicals.height, currentClass.avgHeight)
   const reachDev = getDeviance(physicals.reach, avgReach)
   const legDev = getDeviance(physicals.legReach, avgLegReach)
-  const reachExtra = Math.max(0, physicals.reach - avgReach) * REACH_COST_PER_CM
-  const legExtra = Math.max(0, physicals.legReach - avgLegReach) * REACH_COST_PER_CM
+
+  const heightCost = (physicals.height - currentClass.avgHeight) * HEIGHT_COST_PER_CM
+  const reachCost = (physicals.reach - avgReach) * REACH_COST_PER_CM
+  const legCost = (physicals.legReach - avgLegReach) * REACH_COST_PER_CM
+
+  const formatCost = (val) => {
+    if (val > 0) return <span style={{ color: 'orange' }}> +{val} RBs</span>
+    if (val < 0) return <span style={{ color: 'green' }}> {val} RBs</span>
+    return null
+  }
 
   return (
     <div>
@@ -40,6 +52,7 @@ function PhysicalSliders({ physicals, setPhysicals, currentClass, avgReach, avgL
       <div>
         <label>
           Height: {displayMeasurement(physicals.height, units)} ({heightDev > 0 ? '+' : ''}{heightDev}% vs avg)
+          {formatCost(heightCost)}
         </label><br />
         <input
           type="range"
@@ -53,7 +66,7 @@ function PhysicalSliders({ physicals, setPhysicals, currentClass, avgReach, avgL
       <div>
         <label>
           Reach: {displayReach(physicals.reach, units)} ({reachDev > 0 ? '+' : ''}{reachDev}% vs avg)
-          {reachExtra > 0 && <span style={{ color: 'orange' }}> +{reachExtra} RBs</span>}
+          {formatCost(reachCost)}
         </label><br />
         <input
           type="range"
@@ -67,7 +80,7 @@ function PhysicalSliders({ physicals, setPhysicals, currentClass, avgReach, avgL
       <div>
         <label>
           Leg Reach: {displayReach(physicals.legReach, units)} ({legDev > 0 ? '+' : ''}{legDev}% vs avg)
-          {legExtra > 0 && <span style={{ color: 'orange' }}> +{legExtra} RBs</span>}
+          {formatCost(legCost)}
         </label><br />
         <input
           type="range"
